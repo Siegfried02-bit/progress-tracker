@@ -1,0 +1,124 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Progress Tracker</title>
+  <link rel="manifest" href="manifest.json">
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; }
+    .goal { margin-bottom: 20px; }
+    .progress-bar { width: 100%; background: #ddd; height: 20px; }
+    .progress { background: #4caf50; height: 100%; }
+    input { margin: 5px 0; }
+  </style>
+</head>
+<body>
+  <h1>Progress Tracker</h1>
+  <div>
+    <label>New Goal Name: <input type="text" id="newName"></label><br>
+    <label>Target: <input type="number" id="newTarget"></label><br>
+    <button onclick="addGoal()">Add Goal</button>
+  </div>
+  <div id="goalsContainer"></div>
+  <script>
+    let goals = [];
+    function loadGoals() {
+      const saved = localStorage.getItem('goals');
+      if (saved) {
+        goals = JSON.parse(saved);
+      }
+      renderGoals();
+    }
+    function saveGoals() {
+      localStorage.setItem('goals', JSON.stringify(goals));
+    }
+    function addGoal() {
+      const name = document.getElementById('newName').value;
+      const target = parseInt(document.getElementById('newTarget').value);
+      if (name && target) {
+        goals.push({name, target, current: 0});
+        saveGoals();
+        renderGoals();
+        document.getElementById('newName').value = '';
+        document.getElementById('newTarget').value = '';
+      }
+    }
+    function updateGoal(index) {
+      const progressInput = document.getElementById(`progress-${index}`);
+      const progress = parseInt(progressInput.value);
+      if (!isNaN(progress)) {
+        goals[index].current += progress;
+        if (goals[index].current > goals[index].target) {
+          goals[index].current = goals[index].target;
+        }
+        saveGoals();
+        renderGoals();
+        progressInput.value = '';
+      }
+    }
+    function renderGoals() {
+      const container = document.getElementById('goalsContainer');
+      container.innerHTML = '';
+      goals.forEach((goal, index) => {
+        const percentage = (goal.current / goal.target) * 100;
+        const goalDiv = document.createElement('div');
+        goalDiv.className = 'goal';
+        goalDiv.innerHTML = `
+          <h3>${goal.name}</h3>
+          <p>Progress: ${goal.current} / ${goal.target} (${percentage.toFixed(1)}%)</p>
+          <div class="progress-bar"><div class="progress" style="width: ${percentage}%"></div></div>
+          <label>Add progress: <input type="number" id="progress-${index}"></label>
+          <button onclick="updateGoal(${index})">Update</button>
+        `;
+        container.appendChild(goalDiv);
+      });
+    }
+    // Load goals on page load
+    loadGoals();
+    // Service Worker registration
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js');
+    }
+  </script>
+</body>
+</html>
